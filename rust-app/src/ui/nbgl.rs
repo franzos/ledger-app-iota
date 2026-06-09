@@ -288,4 +288,63 @@ impl UserInterface {
             self.do_refresh.replace(true);
         }
     }
+
+    pub fn confirm_eddsa_raw_sign(
+        &self,
+        msg_contents: &ArrayVec<u8, MESSAGE_MAX_LENGTH>,
+    ) -> Option<()> {
+        self.do_refresh.replace(true);
+        let do_review = |fields| {
+            NbglReview::new()
+                .glyph(&APP_ICON)
+                .blind()
+                .titles(
+                    "Review credential to sign",
+                    "Raw signature — verify the payload externally",
+                    "Sign credential",
+                )
+                .show(fields)
+        };
+        let success = {
+            if let Some(msg) = is_printable_ascii(msg_contents) {
+                let m = Field {
+                    name: "Payload",
+                    value: msg,
+                };
+                do_review(&[m])
+            } else {
+                let m = Field {
+                    name: "Payload (bytes)",
+                    value: &format!("0x{}", HexSlice(msg_contents)),
+                };
+                do_review(&[m])
+            }
+        };
+
+        NbglReviewStatus::new()
+            .status_type(StatusType::Message)
+            .show(success);
+        if success {
+            Some(())
+        } else {
+            None
+        }
+    }
+
+    pub fn warn_raw_sign_disabled(&self) {
+        let choice = NbglChoice::new().show(
+            "Raw EdDSA signing is disabled",
+            "Enable raw EdDSA signing in the settings to sign off-chain credentials",
+            "Go to settings",
+            "Reject",
+        );
+        if choice {
+            let mut mm = self.main_menu.borrow_mut();
+            mm.set_start_page(PageIndex::Settings(0));
+            mm.show_and_return();
+            mm.set_start_page(PageIndex::Home);
+        } else {
+            self.do_refresh.replace(true);
+        }
+    }
 }

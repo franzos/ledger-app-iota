@@ -58,13 +58,19 @@ pub fn app_main(ctx: &RunCtx) {
     );
 
     #[cfg(any(target_os = "stax", target_os = "flex"))]
-    let settings_strings = [[
-        "Blind Signing",
-        "Sign transactions for which details cannot be verified",
-    ]];
+    let settings_strings = [
+        [
+            "Blind Signing",
+            "Sign transactions for which details cannot be verified",
+        ],
+        [
+            "Raw EdDSA Signing",
+            "Sign off-chain credentials (W3C VC) with the identity key",
+        ],
+    ];
 
     #[cfg(not(any(target_os = "stax", target_os = "flex")))]
-    let settings_strings = [["Blind Signing", ""]];
+    let settings_strings = [["Blind Signing", ""], ["Raw EdDSA Signing", ""]];
 
     let main_menu = SingleThreaded(RefCell::new(
         NbglHomeAndSettings::new()

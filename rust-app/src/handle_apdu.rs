@@ -43,6 +43,10 @@ pub fn handle_apdu_async(
                 trace!("Handling sign");
                 NoinlineFut(sign_apdu(io, ctx, settings, ui)).await;
             }
+            Ins::SignEddsaRaw => {
+                trace!("Handling raw EdDSA sign");
+                NoinlineFut(sign_eddsa_raw_apdu(io, settings, ui)).await;
+            }
             Ins::GetVersionStr => {}
             Ins::Exit if ctx.is_swap() => unsafe { ledger_secure_sdk_sys::os_lib_end() },
             Ins::Exit => ledger_device_sdk::exit_app(0),

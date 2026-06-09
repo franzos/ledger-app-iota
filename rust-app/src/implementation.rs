@@ -37,6 +37,16 @@ pub fn is_bip_prefix_valid(path: &[u32]) -> bool {
     path.starts_with(&BIP32_TESTNET_PREFIX[0..2]) || path.starts_with(&BIP32_IOTA_PREFIX[0..2])
 }
 
+// Provisional identity/verification-method derivation prefix — finalize with IOTA
+// maintainers before upstreaming. Deliberately disjoint from the funding paths
+// above so an identity key can never produce a transaction signature.
+pub const BIP32_IDENTITY_PREFIX: [u32; 5] =
+    ledger_device_sdk::ecc::make_bip32_path(b"m/44'/4220'/123'/0'/0'");
+
+pub fn is_identity_prefix_valid(path: &[u32]) -> bool {
+    path.starts_with(&BIP32_IDENTITY_PREFIX[0..2])
+}
+
 pub async fn get_address_apdu(io: HostIO, ui: UserInterface, prompt: bool) {
     let input = match io.get_params::<1>() {
         Some(v) => v,
@@ -45,7 +55,9 @@ pub async fn get_address_apdu(io: HostIO, ui: UserInterface, prompt: bool) {
 
     let path = BIP_PATH_PARSER.parse(&mut input[0].clone()).await;
 
-    if !is_bip_prefix_valid(&path) {
+    // Accept funding and identity paths: the wallet needs to read the identity
+    // key to publish it as a DID verification method.
+    if !is_bip_prefix_valid(&path) && !is_identity_prefix_valid(&path) {
         reject::<()>(SyscallError::InvalidParameter as u16).await;
     }
 
@@ -283,6 +295,59 @@ pub async fn sign_apdu(io: HostIO, ctx: &RunCtx, settings: Settings, ui: UserInt
 
     // Does nothing if not a swap mode
     ctx.set_swap_sign_success();
+}
+
+// Standard EdDSA signing for off-chain W3C Verifiable Credentials: signs the
+// host-provided bytes directly with pure Ed25519 (RFC 8032) — no Blake2b, no
+// intent prefix — so the signature verifies with any standard Ed25519 verifier.
+pub async fn sign_eddsa_raw_apdu(io: HostIO, settings: Settings, ui: UserInterface) {
+    let mut input = match io.get_params::<2>() {
+        Some(v) => v,
+        None => reject(SyscallError::InvalidParameter as u16).await,
+    };
+
+    // Opt-in gate, distinct from blind transaction signing.
+    if !settings.get_raw_sign() {
+        ui.warn_raw_sign_disabled();
+        reject::<()>(SyscallError::NotSupported as u16).await;
+    }
+
+    // param[0] = [len: u32 LE][message]. Validate the declared length before
+    // buffering so we only ever read, display and sign exactly those bytes.
+    use crate::ui::common::MESSAGE_MAX_LENGTH;
+    let length = usize::from_le_bytes(input[0].read().await);
+    // Every IOTA user-key signature is Ed25519 over a 32-byte Blake2b digest, so
+    // refusing anything shorter than 64 bytes makes forging a transaction or
+    // personal-message signature through this path impossible. W3C VC inputs are
+    // >= 64 bytes (Data-Integrity hashData is 64; a VC-JWS input is larger).
+    if length < 64 || length > MESSAGE_MAX_LENGTH {
+        reject::<()>(SyscallError::InvalidParameter as u16).await;
+    }
+
+    // Identity key path, disjoint from the funding/controller path space.
+    let path = BIP_PATH_PARSER.parse(&mut input[1].clone()).await;
+    if !is_identity_prefix_valid(&path) {
+        reject::<()>(SyscallError::InvalidParameter as u16).await;
+    }
+
+    let mut msg = ArrayVec::<u8, MESSAGE_MAX_LENGTH>::new();
+    {
+        let mut bs = input[0].clone();
+        for _ in 0..length {
+            let b: [u8; 1] = bs.read().await;
+            let _ = msg.try_push(b[0]);
+        }
+    }
+
+    if ui.confirm_eddsa_raw_sign(&msg).is_none() {
+        reject::<()>(StatusWords::UserCancelled as u16).await;
+    }
+
+    if let Some(sig) = { eddsa_sign(&path, true, &msg).ok() } {
+        io.result_final(&sig.0[0..]).await;
+    } else {
+        reject::<()>(SyscallError::Unspecified as u16).await;
+    }
 }
 
 #[derive(Clone)]

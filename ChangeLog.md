@@ -1,5 +1,8 @@
 # Change Log
 
+## 1.1.0
+* Add standard EdDSA signing for W3C Verifiable Credentials (no Blake2b).
+
 ## 1.0.1
 * Add support for Nano Gen5.
 

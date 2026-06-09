@@ -8,6 +8,7 @@ static mut SETTINGS: NVMData<AtomicStorage<[u8; SETTINGS_SIZE]>> =
     NVMData::new(AtomicStorage::new(&[0u8; 10]));
 
 const BLINDSIGN_IX: usize = 0;
+const RAWSIGN_IX: usize = 1;
 
 #[derive(Clone, Copy)]
 pub struct Settings;
@@ -42,6 +43,28 @@ impl Settings {
             switch_values[BLINDSIGN_IX] = 1;
         } else {
             switch_values[BLINDSIGN_IX] = 0;
+        }
+        settings.update(&switch_values);
+    }
+
+    // Distinct from blind signing: gates raw EdDSA signing of off-chain
+    // credentials (W3C VC) with the identity key.
+    #[inline(never)]
+    pub fn get_raw_sign(&self) -> bool {
+        let data = &raw const SETTINGS;
+        let settings = unsafe { (*data).get_ref() };
+        settings.get_ref()[RAWSIGN_IX] == 1
+    }
+
+    #[inline(never)]
+    pub fn set_raw_sign(&mut self, enabled: bool) {
+        let data = &raw mut SETTINGS;
+        let settings = unsafe { (*data).get_mut() };
+        let mut switch_values: [u8; SETTINGS_SIZE] = *settings.get_ref();
+        if enabled {
+            switch_values[RAWSIGN_IX] = 1;
+        } else {
+            switch_values[RAWSIGN_IX] = 0;
         }
         settings.update(&switch_values);
     }
